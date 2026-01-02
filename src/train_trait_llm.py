@@ -14,10 +14,12 @@ import pandas as pd
 from pathlib import Path
 import wandb
 from tqdm import tqdm
+import os
+import glob
 
 from trait_vectorizer import TraitVectorizer
 from dataset_loader import OkCupidDataset, ensure_dataset_exists
-from simple_trait_llm import SimpleTraitConditionedLLM
+from simple_trait_token_llm import SimpleTraitTokenLLM
 
 
 class TrainingConfig:
@@ -70,6 +72,13 @@ def collate_fn(batch, tokenizer, max_length=256):
     # Stack trait vectors
     trait_vectors = torch.stack(trait_vectors)  # (batch_size, trait_dim)
     
+    # Ensure the tokenizer's EOS token is present in training examples so
+    # the model can learn to emit an explicit end-of-text token. If the
+    # tokenizer doesn't define an EOS token this is a no-op.
+    eos = getattr(tokenizer, 'eos_token', None)
+    if eos:
+        texts = [t if t.endswith(eos) else t + eos for t in texts]
+
     # Tokenize texts
     encoded = tokenizer(
         texts,
@@ -223,7 +232,7 @@ def main():
     
     # Load model
     print("Loading model...")
-    model = SimpleTraitConditionedLLM(config.model_name, config.trait_dim)
+    model = SimpleTraitTokenLLM(config.model_name, config.trait_dim)
     model = model.to(device)
     
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
@@ -263,13 +272,53 @@ def main():
         end_factor=1.0,
         total_iters=config.warmup_steps
     )
+
+    # Attempt to resume from the latest checkpoint (if any)
+    start_epoch = 0
+    last_step = 0
+    checkpoint_files = sorted(
+        list(config.output_dir.glob("checkpoint-epoch*-step*.pt")),
+        key=lambda p: p.stat().st_mtime
+    )
+
+    if checkpoint_files:
+        last_checkpoint = checkpoint_files[-1]
+        print(f"Resuming from checkpoint: {last_checkpoint}")
+        checkpoint = torch.load(last_checkpoint, map_location=device)
+
+        # Load model weights if present
+        if 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+
+        # Load optimizer state if present
+        if 'optimizer_state_dict' in checkpoint and checkpoint['optimizer_state_dict'] is not None:
+            try:
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                # Move optimizer tensors to the correct device
+                for state in optimizer.state.values():
+                    for k, v in list(state.items()):
+                        if isinstance(v, torch.Tensor):
+                            state[k] = v.to(device)
+            except Exception as e:
+                print(f"Warning: failed to load optimizer state: {e}")
+
+        # Load scheduler state if present
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
+            try:
+                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            except Exception as e:
+                print(f"Warning: failed to load scheduler state: {e}")
+
+        start_epoch = int(checkpoint.get('epoch', 0))
+        last_step = int(checkpoint.get('step', 0))
+        print(f"Resumed at epoch {start_epoch}, step {last_step}")
     
     print(f"Training for {config.num_epochs} epochs ({total_steps} steps)")
     
     # Training loop
     best_val_loss = float('inf')
     
-    for epoch in range(config.num_epochs):
+    for epoch in range(start_epoch, config.num_epochs):
         print(f"\nEpoch {epoch + 1}/{config.num_epochs}")
         
         # Train
