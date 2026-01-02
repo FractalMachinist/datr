@@ -16,7 +16,7 @@ import wandb
 from tqdm import tqdm
 
 from trait_vectorizer import TraitVectorizer
-from dataset_loader import OkCupidDataset
+from dataset_loader import OkCupidDataset, ensure_dataset_exists
 from simple_trait_llm import SimpleTraitConditionedLLM
 
 
@@ -199,6 +199,7 @@ def main():
     
     print("Loading dataset...")
     # Load data and create vectorizer
+    ensure_dataset_exists(config.csv_path)
     df = pd.read_csv(config.csv_path)
     vectorizer = TraitVectorizer(df)
     
