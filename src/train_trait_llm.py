@@ -228,18 +228,6 @@ def main():
     
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    # ONLY TRAIN THE TRAIT PROJECTOR
-    # Freeze all model parameters except the trait projector
-    for param in model.parameters():
-        param.requires_grad = False
-    for param in model.trait_projector.parameters():
-        param.requires_grad = True
-    
-    # Show trainable parameter count
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"Trainable parameters: {trainable_params:,} / {total_params:,}")
-    
     # Create data loaders
     def collate_wrapper(batch):
         return collate_fn(batch, model.tokenizer, config.max_length)
@@ -263,7 +251,7 @@ def main():
     # Optimizer and scheduler
     # Only pass the trait projector parameters to optimizer
     optimizer = optim.AdamW(
-        model.trait_projector.parameters(),
+        model.parameters(),
         lr=config.learning_rate,
         weight_decay=config.weight_decay
     )
