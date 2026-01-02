@@ -15,6 +15,61 @@ import pickle
 from trait_vectorizer import TraitVectorizer
 
 
+def ensure_dataset_exists(csv_path: str = None) -> str:
+    """
+    Ensure the OkCupid dataset exists, downloading if necessary.
+    
+    Args:
+        csv_path: Optional custom path. If None, uses downloads/okcupid_profiles.csv
+    
+    Returns:
+        Path to the CSV file
+    """
+    if csv_path is None:
+        # Get project root (parent of src/)
+        src_dir = Path(__file__).parent
+        project_root = src_dir.parent
+        csv_path = project_root / 'downloads' / 'okcupid_profiles.csv'
+    else:
+        csv_path = Path(csv_path)
+    
+    # If file exists, return it
+    if csv_path.exists():
+        print(f"Dataset found at {csv_path}")
+        return str(csv_path)
+    
+    # Download the dataset
+    print(f"Dataset not found at {csv_path}")
+    print("Downloading OkCupid dataset from Kaggle...")
+    
+    import subprocess
+    import zipfile
+    
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    zip_path = csv_path.parent / 'okcupid-profiles.zip'
+    
+    # Download using curl (as shown in README)
+    subprocess.run([
+        'curl', '-L',
+        '-o', str(zip_path),
+        'https://www.kaggle.com/api/v1/datasets/download/andrewmvd/okcupid-profiles'
+    ], check=True)
+    
+    # Extract the CSV
+    print(f"Extracting to {csv_path.parent}...")
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(csv_path.parent)
+    
+    # Clean up zip
+    zip_path.unlink()
+    
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Failed to extract dataset to {csv_path}")
+    
+    print(f"Dataset downloaded and extracted successfully to {csv_path}")
+    return str(csv_path)
+
+
 class OkCupidDataset(Dataset):
     """Dataset of (trait_vector, essay_text) pairs."""
     
@@ -31,18 +86,28 @@ class OkCupidDataset(Dataset):
         'essay9': 'You should message me if...',
     }
     
-    def __init__(self, csv_path: str, vectorizer: TraitVectorizer, 
+    def __init__(self, csv_path: str = None, vectorizer: TraitVectorizer = None, 
                  max_essays: int = None, seed: int = 42):
         """
         Load OkCupid dataset.
         
         Args:
-            csv_path: Path to okcupid_profiles.csv
-            vectorizer: TraitVectorizer instance
+            csv_path: Path to okcupid_profiles.csv (auto-downloads if not found)
+            vectorizer: TraitVectorizer instance (created from csv if None)
             max_essays: Max total essays to include (for debugging)
             seed: Random seed
         """
         np.random.seed(seed)
+        
+        # Ensure dataset exists
+        csv_path = ensure_dataset_exists(csv_path)
+        
+        # Create vectorizer if not provided
+        if vectorizer is None:
+            print(f"Creating TraitVectorizer from {csv_path}...")
+            df_for_vectorizer = pd.read_csv(csv_path)
+            vectorizer = TraitVectorizer(df_for_vectorizer)
+        
         self.vectorizer = vectorizer
         
         print(f"Loading dataset from {csv_path}...")
@@ -160,12 +225,13 @@ def create_dataloaders(dataset: OkCupidDataset,
 
 if __name__ == '__main__':
     # Test dataset loading
-    df = pd.read_csv('/home/zach/Documents/Proj/datr/downloads/okcupid_profiles.csv')
+    csv_path = ensure_dataset_exists()
+    df = pd.read_csv(csv_path)
     vectorizer = TraitVectorizer(df)
     
     dataset = OkCupidDataset(
-        '/home/zach/Documents/Proj/datr/downloads/okcupid_profiles.csv',
-        vectorizer,
+        csv_path=csv_path,
+        vectorizer=vectorizer,
         max_essays=1000  # For testing
     )
     

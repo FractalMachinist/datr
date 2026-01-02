@@ -7,10 +7,12 @@ Stage 1: Explore OkCupid dataset
 
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 # Load dataset
-csv_path = '/home/zach/Documents/Proj/datr/downloads/okcupid_profiles.csv'
-df = pd.read_csv(csv_path)
+project_root = Path(__file__).parent.parent
+csv_path = project_root / 'downloads' / 'okcupid_profiles.csv'
+df = pd.read_csv(str(csv_path))
 
 print("=" * 80)
 print("DATASET SHAPE & BASIC INFO")

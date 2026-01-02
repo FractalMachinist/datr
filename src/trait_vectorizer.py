@@ -239,7 +239,10 @@ class TraitVectorizer:
 
 if __name__ == '__main__':
     # Test with actual data
-    df = pd.read_csv('/home/zach/Documents/Proj/datr/downloads/okcupid_profiles.csv')
+    from pathlib import Path
+    project_root = Path(__file__).parent.parent
+    csv_path = project_root / 'downloads' / 'okcupid_profiles.csv'
+    df = pd.read_csv(csv_path)
     
     vectorizer = TraitVectorizer(df)
     print(f"Vector size: {vectorizer.vector_size}")
