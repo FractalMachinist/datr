@@ -41,7 +41,7 @@ class TrainingConfig:
         self.train_split = 0.8
         
         # Paths
-        self.data_dir = Path("/home/zach/Documents/Proj/datr")
+        self.data_dir = Path(__file__).parent.parent
         self.csv_path = self.data_dir / "downloads" / "okcupid_profiles.csv"
         self.output_dir = self.data_dir / "models"
         self.logs_dir = self.data_dir / "logs"
